@@ -15,7 +15,6 @@ import os
 import subprocess
 import joblib
 
-
 const_PCount = 8
 
 def luhn_checksum(imei):
@@ -53,15 +52,15 @@ def sub_Proc(pMain, pSub):
         except eventlet.queue.Empty:
             break
 
-        if len(algoOEMcode) == 0:
+        if algoOEMcode < 0:
             # recv the EXIT sign
             break
-        
-        
-        p = subprocess.Popen(["fastboot","oem","unlock",algoOEMcode], \
+
+        #print (algoOEMcode, end=" ", flush=True) 
+        p = subprocess.Popen(["fastboot","oem","unlock",str(algoOEMcode)], \
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         while p.poll() is None:
-            eventlet.sleep(0.2)
+            eventlet.sleep(0.5)
         _, error = p.communicate()
 
         #print (error)
@@ -69,28 +68,22 @@ def sub_Proc(pMain, pSub):
             print (".", end ="", flush=True)
             pSub.put (algoOEMcode)
         else:
-            pSub.put ("-"+algoOEMcode)
+            pSub.put (-algoOEMcode)
 
-def sub_Pipe_In2 (pMain, run_OEMCode, fail_Codes):
-    for i in range (run_OEMCode, run_OEMCode *10):
-        if str(i) not in fail_Codes:
-            pMain.send (str(i))
-    for i in range(1000):
-        pMain.send ("")
-    
-def sub_Pipe_In (pMain, run_OEMCode, fail_Codes, imei, checksum):
+
+def sub_Data_init (pMain, run_OEMCode, fail_Codes, imei, checksum):
     i = 0
     j = 0
     while run_OEMCode < 10000 * 10000 * 10000 * 10000:
         i += 1
         run_OEMCode  += int(checksum + math.sqrt(imei) * 1024)
-        if str(run_OEMCode) not in fail_Codes:
-            pMain.put (str(run_OEMCode))
+        if run_OEMCode not in fail_Codes:
+            pMain.put (run_OEMCode)
             #pMain.send (str(run_OEMCode))
             j += 1
         eventlet.sleep (0)
     for _ in range(1000):
-        pMain.put ("")
+        pMain.put (-1)
         #pMain.send ("")
         eventlet.sleep (0)
     print ("OEMCode Count:", i, "/", j, end="", flush=True)
@@ -113,8 +106,8 @@ if __name__ == "__main__":
     pMain = eventlet.queue.Queue()
     pSub  = eventlet.queue.Queue()
 
-    init_p = eventlet.spawn (sub_Pipe_In, pMain, run_OEMCode, fail_Codes, imei, checksum)
-    eventlet.sleep(2)
+    init_p = eventlet.spawn (sub_Data_init, pMain, run_OEMCode, fail_Codes, imei, checksum)
+    eventlet.sleep(3)
 
     subprocess.run(['adb', 'devices'])
 
@@ -124,6 +117,7 @@ if __name__ == "__main__":
     , stderr = subprocess.DEVNULL
     )
 
+    eventlet.sleep(3)
     input('Press any key when your device is in fastboot mode\n')
 
     pList = []
@@ -134,13 +128,15 @@ if __name__ == "__main__":
     t0 = time.time()
     exit_Count = 64
     working_Count = -1
+    print ("Enter circle ")
     while True:        
         if working_Count < 0 and init_p.dead:
             working_Count = init_p.wait()
+            print ("working_Count ", working_Count)
 
         try:
             r = pSub.get(block=True, timeout=5)
-            if r[0] != "-":
+            if r > 0:
                 recv_Count += 1
                 fail_Codes.append(r)
             else:
@@ -151,6 +147,7 @@ if __name__ == "__main__":
             exit_Count = 64
         except eventlet.queue.Empty:
             exit_Count -= 0
+            print ("#", end="", flush=True)
             if exit_Count < 0:
                 break
 
