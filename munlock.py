@@ -87,7 +87,7 @@ def sub_Data_init (pMain, run_OEMCode, fail_Codes, imei, checksum):
         #pMain.send ("")
         eventlet.sleep (0)
     print ("OEMCode Count:", i, "/", j, end="", flush=True)
-    return j
+    return i
     
 if __name__ == "__main__":
     run_OEMCode = 1000 * 10000 * 10000 * 10000
